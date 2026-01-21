@@ -17,6 +17,7 @@
 
 import functools
 import pickle
+from typing import Sequence
 
 from flax import linen as nn
 from flax.linen import partitioning as nn_partitioning
@@ -26,6 +27,7 @@ import numpy as np
 
 from jax.experimental import mesh_utils
 from jax.experimental.serialize_executable import deserialize_and_load
+from jax.sharding import AxisType, Mesh
 
 import jax
 import jax.numpy as jnp
@@ -39,8 +41,9 @@ from MaxText import checkpointing
 from MaxText import max_logging
 from MaxText import max_utils
 from MaxText import multimodal_utils
+from MaxText import pyconfig
 from MaxText import sharding
-from MaxText.common_types import DecoderBlockType, MODEL_MODE_PREFILL, MODEL_MODE_AUTOREGRESSIVE
+from MaxText.common_types import DecoderBlockType, MODEL_MODE_PREFILL, MODEL_MODE_AUTOREGRESSIVE, ShardMode
 from MaxText.inference.page_manager import PageState
 
 OVERWRITE_WITH_GRADIENT = "_overwrite_with_gradient"
@@ -1178,3 +1181,27 @@ def print_state_mesh_shardings_params(state, state_sharding, mesh):
     shape = jax.typeof(leaf_val)
     pspec = sharding.remove_size_one_mesh_axis(leaf_sharding.spec, mesh)
     max_logging.log(f"{path_str:.<80} {shape} {tuple(pspec)}")
+
+
+def get_mesh_from_config(
+    config: pyconfig.HyperParameters,
+    devices: Sequence[jax.Device] | None = None,
+) -> Mesh:
+  """
+  Geh mesh from the configuration.
+
+  Args:
+    config: the configuration
+    devices: the devices
+
+  Returns:
+    the device mesh
+  """
+  devices_array = create_device_mesh(config, devices)
+
+  if config.shard_mode == ShardMode.EXPLICIT:
+    axis_types = tuple([AxisType.Explicit] * len(config.mesh_axes))
+  else:
+    axis_types = tuple([AxisType.Auto] * len(config.mesh_axes))
+
+  return Mesh(devices_array, config.mesh_axes, axis_types=axis_types)
