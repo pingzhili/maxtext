@@ -153,13 +153,13 @@ max_num_checkpoints_to_keep: 10
 
 # ====== Reward ======
 
-reward_exact_format_match: 3.0
+reward_exact_format_match: 3.0 # maybe 1.0 for DAPO
 reward_white_space_format_match: 1.5
 reward_partial_format_match: 0.5
 reward_ratio_guess_to_answer_high:  0.5
 reward_ratio_guess_to_answer_low: 0.25
 penalty_incorrect_format: -0.5
-penalty_incorrect_answer: -1.0
+penalty_incorrect_answer: -1.0 # maybe -1.0 for DAPO
 
 # ====== Special tokens/templates for GSM8K reasoning ======
 reasoning_start_token: '<reasoning>'
@@ -171,7 +171,7 @@ skip_jax_distributed_system: True
 
 # # TODO(@mazumdera): fix this
 # Dataset Configuration
-dataset_name: 'huggingface:BytedTsinghua-SIA/DAPO-Math-17k'
+dataset_name: 'huggingface:open-r1/DAPO-Math-17k-Processed'
 train_split: 'train'
 eval_split: 'train'
 tokenizer_type: 'huggingface'

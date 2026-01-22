@@ -15,6 +15,7 @@
 # pylint: disable=bare-except, consider-using-generator, chained-comparison
 """RL Utils Module."""
 import re
+from typing import Optional
 import optax
 from MaxText import max_logging
 
@@ -90,6 +91,169 @@ def match_format_approximately(prompts, completions, tmvp_config, **kargs):
   return scores
 
 
+# def last_boxed_only_string(string: str) -> Optional[str]:
+#   """Extract the last LaTeX boxed expression from a string.
+
+#   Args:
+#       string: Input string containing LaTeX code
+
+#   Returns:
+#       The last boxed expression or None if not found
+#   """
+#   idx = string.rfind("\\boxed{")
+#   if idx < 0:
+#     return None
+
+#   i = idx
+#   right_brace_idx = None
+#   num_left_braces_open = 0
+
+#   while i < len(string):
+#     if string[i] == "{":
+#       num_left_braces_open += 1
+#     if string[i] == "}":
+#       num_left_braces_open -= 1
+#       if num_left_braces_open == 0:
+#         right_brace_idx = i
+#         break
+#     i += 1
+
+#   return string[idx : right_brace_idx + 1] if right_brace_idx is not None else None
+
+
+# def remove_boxed(s: str) -> str:
+#   """Remove the LaTeX boxed command from a string.
+
+#   Args:
+#       s: String with format "\\boxed{content}"
+
+#   Returns:
+#       The content inside the boxed command
+#   """
+#   left = "\\boxed{"
+#   assert s[: len(left)] == left, f"box error: {s}"
+#   assert s[-1] == "}", f"box error: {s}"
+#   return s[len(left) : -1]
+
+
+# Constants for normalization
+SUBSTITUTIONS = [
+    ("an ", ""),
+    ("a ", ""),
+    (".$", "$"),
+    ("\\$", ""),
+    (r"\ ", ""),
+    (" ", ""),
+    ("mbox", "text"),
+    (",\\text{and}", ","),
+    ("\\text{and}", ","),
+    ("\\text{m}", "\\text{}"),
+]
+
+REMOVED_EXPRESSIONS = [
+    "square",
+    "ways",
+    "integers",
+    "dollars",
+    "mph",
+    "inches",
+    "hours",
+    "km",
+    "units",
+    "\\ldots",
+    "sue",
+    "points",
+    "feet",
+    "minutes",
+    "digits",
+    "cents",
+    "degrees",
+    "cm",
+    "gm",
+    "pounds",
+    "meters",
+    "meals",
+    "edges",
+    "students",
+    "childrentickets",
+    "multiples",
+    "\\text{s}",
+    "\\text{.}",
+    "\\text{\ns}",
+    "\\text{}^2",
+    "\\text{}^3",
+    "\\text{\n}",
+    "\\text{}",
+    r"\mathrm{th}",
+    r"^\circ",
+    r"^{\circ}",
+    r"\;",
+    r",\!",
+    "{,}",
+    '"',
+    "\\dots",
+]
+
+
+def normalize_final_answer(final_answer: str) -> str:
+  """Normalize a final answer to a quantitative reasoning question.
+
+  Args:
+      final_answer: The answer string to normalize
+
+  Returns:
+      Normalized answer string
+  """
+  final_answer = final_answer.split("=")[-1]
+
+  # Apply substitutions and removals
+  for before, after in SUBSTITUTIONS:
+    final_answer = final_answer.replace(before, after)
+  for expr in REMOVED_EXPRESSIONS:
+    final_answer = final_answer.replace(expr, "")
+
+  # Extract and normalize LaTeX math
+  final_answer = re.sub(r"(.*?)(\$)(.*?)(\$)(.*)", "$\\3$", final_answer)
+  final_answer = re.sub(r"(\\text\{)(.*?)(\})", "\\2", final_answer)
+  final_answer = re.sub(r"(\\textbf\{)(.*?)(\})", "\\2", final_answer)
+  final_answer = re.sub(r"(\\overline\{)(.*?)(\})", "\\2", final_answer)
+  final_answer = re.sub(r"(\\boxed\{)(.*)(\})", "\\2", final_answer)
+
+  # Normalize shorthand TeX:
+  #  \fracab -> \frac{a}{b}
+  #  \frac{abc}{bef} -> \frac{abc}{bef}
+  #  \fracabc -> \frac{a}{b}c
+  #  \sqrta -> \sqrt{a}
+  #  \sqrtab -> sqrt{a}b
+  final_answer = re.sub(r"(frac)([^{])(.)", "frac{\\2}{\\3}", final_answer)
+  final_answer = re.sub(r"(sqrt)([^{])", "sqrt{\\2}", final_answer)
+  final_answer = final_answer.replace("$", "")
+
+  # Normalize numbers
+  if final_answer.replace(",", "").isdigit():
+    final_answer = final_answer.replace(",", "")
+
+  return final_answer.strip()
+
+
+# def is_correct_minerva(
+#     solution_str: str, gt: str, gt_need_extract: bool = False, answer_pattern: str = r"(?i)Answer\s*:\s*([^\n]+)"
+# ) -> tuple[bool, str]:
+#   """Check if the solution is correct according to Minerva criteria."""
+#   # Extract answer from solution
+#   match = re.findall(answer_pattern, solution_str)
+#   extracted_answer = match[-1] if match else "[INVALID]"
+#   pred = normalize_final_answer(extracted_answer)
+
+#   # Process ground truth
+#   if gt_need_extract:
+#     gt = normalize_final_answer(remove_boxed(last_boxed_only_string(gt)))
+#   else:
+#     gt = normalize_final_answer(gt)
+
+#   return (pred == gt), pred
+
+
 def check_answer(prompts, completions, answer, tmvp_config, **kargs):
   """
   Reward the model if the answer is correct. A reward is also given if the answer
@@ -105,6 +269,9 @@ def check_answer(prompts, completions, answer, tmvp_config, **kargs):
     if guess is None:
       scores.append(0)
       continue
+    if "DAPO" in tmvp_config.dataset_name:
+      guess = normalize_final_answer(guess)
+      true_answer = normalize_final_answer(true_answer)
     # Correct answer gets tmvp_config.reward_exact_format_match points!
     if guess == true_answer:
       score += tmvp_config.reward_exact_format_match

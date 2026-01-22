@@ -131,19 +131,20 @@ def get_dataset(model_tokenizer, tmvp_config, data_dir, split="train") -> grain.
         return val.decode("utf-8")
       return str(val)
 
-    # Handle DAPO dataset schema (prompt is a list, answer is in reward_model)
-    q_raw = x.get("question", x.get("prompt"))
-    if isinstance(q_raw, list) and len(q_raw) > 0 and "content" in q_raw[0]:
-      question = q_raw[0]["content"]
-    else:
-      question = q_raw
+    # Handle DAPO dataset schema 
+    # originally (prompt is a list, answer is in reward_model) https://huggingface.co/datasets/BytedTsinghua-SIA/DAPO-Math-17k/viewer/default/train?row=0
+    # but using https://huggingface.co/datasets/open-r1/DAPO-Math-17k-Processed/viewer/all/train?row=1
+    # so question is prompt and answer is solution
 
+    question = x.get("question", x.get("prompt"))
     answer = x.get("answer")
-    if answer is None and "reward_model" in x:
-      answer = x["reward_model"]["ground_truth"]
+    if answer is None and "solution" in x:
+      answer = x["solution"]
 
     question = _to_str(question)
     answer = _to_str(answer)
+    if tmvp_config.dataset_name == "gsm8k":
+      answer = utils_rl.extract_hash_answer(answer)
 
     return {
         # passed to model forward pass
@@ -168,7 +169,7 @@ def get_dataset(model_tokenizer, tmvp_config, data_dir, split="train") -> grain.
         # passed to reward functions
         "question": question,
         # passed to reward functions
-        "answer": utils_rl.extract_hash_answer(answer),
+        "answer": answer,
     }
 
   loaded_dataset = (
