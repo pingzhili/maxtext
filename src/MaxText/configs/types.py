@@ -207,6 +207,7 @@ ModelName = Literal[
     "deepseek3-671b-2dfsdp",
     "deepseek3-test",
     "deepseek3-tiny",
+    "deepseek3.2-671b",
     "kimi-k2-1t",
     "gemma-7b",
     "gemma-2b",
@@ -499,6 +500,15 @@ class MlaAttention(BaseModel):
   qk_nope_head_dim: NonNegativeInt = Field(128, description="Dimension for non-RoPE part of QK heads in MLA.")
   qk_rope_head_dim: NonNegativeInt = Field(64, description="Dimension for RoPE part of QK heads in MLA.")
   v_head_dim: NonNegativeInt = Field(128, description="Dimension of V heads in MLA.")
+
+
+class AttentionIndexer(BaseModel):
+  """Configuration for DeepSeek Sparse Attention (DSA): DeepSeek3.2-style MLA with indexer."""
+
+  use_sparse_indexer: bool = Field(False, description="Whether to use sparse indexer for MLA.")
+  index_head_dim: NonNegativeInt = Field(128, description="Head dim for indexer query and key.")
+  index_n_heads: NonNegativeInt = Field(64, description="Number of query heads in indexer.")
+  index_topk: NonNegativeInt = Field(2048, description="Number of tokens selected by the query token in indexer.")
 
 
 class Llama4Attention(BaseModel):
@@ -1685,6 +1695,7 @@ class MaxTextConfig(
     Attention,
     MlaAttention,
     MoBa,
+    AttentionIndexer,
     Llama4Attention,
     SplashAttention,
     PagedAttention,
@@ -2119,6 +2130,11 @@ class MaxTextConfig(
         raise ValueError("`local_checkpoint_period` must be > 0 for emergency checkpointing.")
     if self.moba and self.attention not in ("dot_product"):
       raise ValueError("MoBA is only supported with dot_product attention.")
+    if self.use_sparse_indexer:
+      if self.q_lora_rank == 0:
+        raise NotImplementedError("Sparse indexer has not implemented for q_lora_rank = 0.")
+      if self.attention not in ("dot_product"):
+        raise ValueError("Sparse indexer is only supported dot_product attention")
     if self.attention_type == AttentionType.CHUNK.value and (
         not isinstance(self.chunk_attn_window_size, int) or self.chunk_attn_window_size <= 0
     ):
