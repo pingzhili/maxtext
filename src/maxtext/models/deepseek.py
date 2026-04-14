@@ -77,6 +77,11 @@ class DeepSeekGenericLayer(nnx.Module):
     self.layer_idx = layer_idx
     self.is_engram_enabled = config.engram_layers and layer_idx in config.engram_layers
 
+    if config.init_method_std > 0:
+      self._kernel_init = initializers.nd_dense_init_fixed_std(config.init_method_std)
+    else:
+      self._kernel_init = initializers.nd_dense_init(1.0, "fan_in", "truncated_normal")
+
     batch_size, sequence_length = max_utils.get_batch_seq_len_for_mode(self.config, self.model_mode)
     self.dummy_inputs_shape = (batch_size, sequence_length, self.config.emb_dim)
 
@@ -113,6 +118,7 @@ class DeepSeekGenericLayer(nnx.Module):
           rngs=rngs,
       )
       tokenizer = transformers.AutoTokenizer.from_pretrained(config.tokenizer_path, token=config.hf_access_token)
+      pad_id = config.engram_pad_id if config.engram_pad_id is not None else tokenizer.pad_token_id
       # TODO(ranran): Refactor NgramHashMapping to initialize once globally or at the model level.
       # Moving this to decoders.py currently causes JAX initialization errors.
       self.ngram_hash_mapping = NgramHashMapping(
@@ -121,7 +127,7 @@ class DeepSeekGenericLayer(nnx.Module):
           engram_num_heads=config.engram_num_heads,
           layer_ids=config.engram_layers,
           tokenizer=tokenizer,
-          pad_id=tokenizer.pad_token_id,
+          pad_id=pad_id,
           seed=config.engram_seed,
       )
       self.engram = Engram(
@@ -133,6 +139,7 @@ class DeepSeekGenericLayer(nnx.Module):
           engram_max_ngram_size=config.engram_max_ngram_size,
           engram_kernel_size=config.engram_kernel_size,
           mhc_expansion_rate=config.mhc_expansion_rate,
+          kernel_init=self._kernel_init,
           quant=quant,
           rngs=rngs,
       )
@@ -156,6 +163,7 @@ class DeepSeekGenericLayer(nnx.Module):
         weight_dtype=self.config.weight_dtype,
         dropout_rate=self.config.dropout_rate,
         name="self_attention",
+        kernel_init=self._kernel_init,
         quant=quant,
         kv_quant=quantizations.configure_kv_quant(config),
         q_lora_rank=self.config.q_lora_rank,
@@ -309,8 +317,13 @@ class DeepSeekGenericLayer(nnx.Module):
 
   def engram_op(self, x, decoder_input_tokens):
     normed_x = self.engram_layer_norm(x)
+    if not self.is_mhc_enabled:
+      normed_x = normed_x[:, :, None, :]  # [B,S,D] -> [B,S,1,D]
     hash_ids = self.ngram_hash_mapping(decoder_input_tokens)[self.layer_idx]
-    return self.engram(normed_x, hash_ids)
+    engram_out = self.engram(normed_x, hash_ids)
+    if not self.is_mhc_enabled:
+      engram_out = engram_out[:, :, 0, :]  # [B,S,1,D] -> [B,S,D]
+    return engram_out
 
 
 class DeepSeekDenseLayer(DeepSeekGenericLayer):
@@ -334,6 +347,7 @@ class DeepSeekDenseLayer(DeepSeekGenericLayer):
         dtype=self.config.dtype,
         weight_dtype=self.config.weight_dtype,
         config=self.config,
+        kernel_init=self._kernel_init,
         quant=quant,
         model_mode=model_mode,
         mesh=mesh,
@@ -420,7 +434,7 @@ class DeepSeekMoELayer(DeepSeekGenericLayer):
     self.DeepSeekMoeBlock_0 = moe.RoutedAndSharedMoE(
         config=self.config,
         mesh=mesh,
-        kernel_init=initializers.nd_dense_init(1.0, "fan_in", "truncated_normal"),
+        kernel_init=self._kernel_init,
         kernel_axes=("embed", None),
         dtype=self.config.dtype,
         weight_dtype=self.config.weight_dtype,

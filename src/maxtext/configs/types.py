@@ -225,6 +225,7 @@ ModelName = Literal[
     "deepseek3-tiny",
     "deepseek3.2-671b",
     "deepseek-custom",
+    "engram-310m",
     "kimi-k2-1t",
     "gemma-7b",
     "gemma-2b",
@@ -1193,6 +1194,11 @@ class TrainingLoop(BaseModel):
   enable_data_shuffling: bool = Field(True, description="Enables shuffling of the training data.")
   data_shuffle_seed: int = Field(0, description="Seed for data shuffling.")
   init_weights_seed: int = Field(0, description="Seed for model weight initialization.")
+  init_method_std: float = Field(
+      0.0,
+      description="When > 0, use fixed-std truncated normal init instead of variance scaling. "
+      "Set to 0.02 to match Megatron-LM default.",
+  )
 
 
 class ManifoldConstrainedHyperConnections(BaseModel):
@@ -1836,6 +1842,18 @@ class Engram(BaseModel):
   engram_max_ngram_size: int = Field(3, description="The max 'n' in N-gram.")
   engram_kernel_size: int = Field(4, description="Temporal window size for Engram convolution.")
   engram_seed: int = Field(0, description="The seed for Engram hash mapping.")
+  engram_pad_id: None | int = Field(
+      None,
+      description="Explicit pad token ID for Engram hash mapping. If None, uses tokenizer.pad_token_id.",
+  )
+  engram_lr_mult: float = Field(
+      1.0,
+      description="Learning rate multiplier for Engram embedding parameters.",
+  )
+  engram_wd_mult: float = Field(
+      1.0,
+      description="Weight decay multiplier for Engram embedding parameters. Set to 0.0 to disable.",
+  )
 
 
 class DerivedValues(BaseModel):
@@ -2540,10 +2558,8 @@ class MaxTextConfig(
     ):
       raise ValueError("FP8 quantization is not compatible with gradient accumulation.")
     if self.engram_layers:
-      if not self.hf_access_token or not self.tokenizer_path:
-        raise ValueError(
-            "Engram requires both 'hf_access_token' and 'tokenizer_path' " "to load the Hugging Face tokenizer."
-        )
+      if not self.tokenizer_path:
+        raise ValueError("Engram requires 'tokenizer_path' to load the Hugging Face tokenizer.")
       if len(self.engram_vocab_bases) != (self.engram_max_ngram_size - 1):
         raise ValueError(
             f"Engram vocab size mismatch: expected {self.engram_max_ngram_size - 1} (max_ngram_size - 1), "

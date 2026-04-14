@@ -794,6 +794,9 @@ enable_dropout: True
 enable_data_shuffling: True
 data_shuffle_seed: 0
 init_weights_seed: 0
+# When > 0, use fixed-std truncated normal init instead of variance scaling.
+# Set to 0.02 to match Megatron-LM default.
+init_method_std: 0.0
 
 # DiLoCo params.
 enable_diloco: False
@@ -1187,6 +1190,12 @@ engram_vocab_bases: []
 engram_kernel_size: 4
 # The seed for Engram hash mapping.
 engram_seed: 0
+# Explicit pad token ID for Engram hash mapping. If null, uses tokenizer.pad_token_id.
+engram_pad_id: null
+# Learning rate multiplier for Engram embedding parameters.
+engram_lr_mult: 1.0
+# Weight decay multiplier for Engram embedding parameters (0.0 = no weight decay for engram).
+engram_wd_mult: 1.0
 
 ##### Distillation parameters
 distill_alpha: 0.5

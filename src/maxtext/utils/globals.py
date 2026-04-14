@@ -81,6 +81,7 @@ HF_IDS = {
     "olmo3-7b": "allenai/Olmo-3-7B-Instruct",
     "olmo3-7b-pt": "allenai/Olmo-3-1025-7B",
     "olmo3-32b": "allenai/Olmo-3-32B-Think",
+    "engram-310m": "allenai/OLMo-2-0425-1B",
     # "default" is not HF model, but adding to to avoid confusing warning about tokenizer_path
     "default": os.path.join(MAXTEXT_ASSETS_ROOT, "tokenizers/tokenizer.llama2"),
 }

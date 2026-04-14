@@ -60,6 +60,27 @@ def nd_dense_init(scale, mode, distribution):
   return init_fn
 
 
+def nd_dense_init_fixed_std(std):
+  """Creates a fixed-std truncated normal initializer matching the NdInitializer signature.
+
+  This is used to align with Megatron-LM's `--init-method-std` which applies a
+  fixed standard deviation truncated normal initialization to all weight matrices.
+
+  Args:
+    std: The standard deviation for the truncated normal distribution.
+
+  Returns:
+    A function matching the NdInitializer signature (key, shape, dtype, in_axis, out_axis).
+  """
+
+  def init_fn(key, shape, dtype, in_axis, out_axis):
+    del in_axis, out_axis
+    fn = jax.nn.initializers.truncated_normal(stddev=std)
+    return fn(key, shape, dtype)
+
+  return init_fn
+
+
 def variable_to_logically_partitioned(variable: nnx.VariableState):
   """Wraps an NNX variable's value in `nn.LogicallyPartitioned`.
 

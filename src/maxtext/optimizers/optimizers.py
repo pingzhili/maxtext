@@ -13,7 +13,7 @@
 # limitations under the License.
 
 # pylint: disable=bare-except, consider-using-generator, too-many-positional-arguments
-""" Utils that are only interesting to MaxText. """
+"""Utils that are only interesting to MaxText."""
 
 import re
 import jax
@@ -222,6 +222,36 @@ def get_optimizer(config, learning_rate_schedule, model=None):
         base_opt,
         interval=config.skip_step_interval,
         scaling_factor=config.skip_step_scaling_factor,
+    )
+
+  # Per-parameter optimizer for Engram embeddings: separate LR multiplier and weight decay.
+  engram_layers = getattr(config, "engram_layers", [])
+  engram_lr_mult = getattr(config, "engram_lr_mult", 1.0)
+  engram_wd_mult = getattr(config, "engram_wd_mult", 1.0)
+  if engram_layers and (engram_lr_mult != 1.0 or engram_wd_mult != 1.0):
+    engram_lr_schedule = lambda step: learning_rate_schedule(step) * engram_lr_mult
+    engram_opt = optax.adamw(
+        engram_lr_schedule,
+        b1=config.adam_b1,
+        b2=config.adam_b2,
+        eps=config.adam_eps,
+        eps_root=config.adam_eps_root,
+        weight_decay=config.adam_weight_decay * engram_wd_mult,
+        mu_dtype=config.mu_dtype,
+    )
+
+    def engram_label_fn(params):
+      def _label(path, _):
+        path_str = jax.tree_util.keystr(path, simple=True, separator="/")
+        if "engram" in path_str and "multi_head_embedding" in path_str:
+          return "engram"
+        return "base"
+
+      return jax.tree_util.tree_map_with_path(_label, params)
+
+    base_opt = optax.multi_transform(
+        {"base": base_opt, "engram": engram_opt},
+        engram_label_fn,
     )
 
   # If a whitelist of trainable parameters is provided, freeze everything else.
